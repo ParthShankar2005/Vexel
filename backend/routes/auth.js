@@ -73,7 +73,7 @@ router.post('/register-verify', async (req, res) => {
       window: 1
     });
 
-    if (!verified && code !== '000000') {
+    if (!verified) {
       return res.status(400).json({ error: 'Invalid Google Authenticator verification code' });
     }
 
@@ -144,22 +144,20 @@ router.post('/login', async (req, res) => {
     }
 
     // Verify TOTP Code
-    if (code !== '000000') {
-      if (!user.totpSecret) {
-        return res.status(400).json({ error: 'Authenticator is not configured for this account. Please register first.' });
-      }
+    if (!user.totpSecret) {
+      return res.status(400).json({ error: 'Authenticator is not configured for this account. Please register first.' });
+    }
 
-      const verified = speakeasy.totp.verify({
-        secret: user.totpSecret,
-        encoding: 'base32',
-        token: code,
-        window: 2 // 60 seconds tolerance for client clock drifts
-      });
+    const verified = speakeasy.totp.verify({
+      secret: user.totpSecret,
+      encoding: 'base32',
+      token: code,
+      window: 2 // 60 seconds tolerance for client clock drifts
+    });
 
-      if (!verified) {
-        await createAuditLog(user.id, 'LOGIN_FAILED', 'Invalid Authenticator code entered', req.ip);
-        return res.status(401).json({ error: 'Invalid Google Authenticator code' });
-      }
+    if (!verified) {
+      await createAuditLog(user.id, 'LOGIN_FAILED', 'Invalid Authenticator code entered', req.ip);
+      return res.status(401).json({ error: 'Invalid Google Authenticator code' });
     }
 
     // Create session JWT token
