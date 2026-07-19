@@ -187,7 +187,7 @@ export default function Wizard({ onFinished }) {
                       <Check className="w-3.5 h-3.5 text-emerald-500" /> Active Internet Connection (API Access)
                     </li>
                     <li className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald-500" /> Google Authenticator or similar TOTP app on mobile
+                      <Check className="w-3.5 h-3.5 text-emerald-500" /> Secure Access Key (configured with administrator)
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-3.5 h-3.5 text-emerald-500" /> Transparent PNG product images (1000x1000 pixels preferred)

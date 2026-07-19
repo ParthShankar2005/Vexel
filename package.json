@@ -9,19 +9,35 @@
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:electron": "wait-on http://localhost:3000 && wait-on http://localhost:3001 && electron .",
-    "prisma:generate": "npm run prisma:generate --prefix backend",
+    "prisma:generate": "prisma generate --schema=backend/prisma/schema.prisma",
     "prisma:migrate": "npm run prisma:migrate --prefix backend",
     "db:seed": "npm run db:seed --prefix backend",
     "build:frontend": "npm run build --prefix frontend",
     "package": "npm run build:frontend && electron-builder"
   },
   "dependencies": {
-    "check-disk-space": "^3.4.0"
+    "@prisma/client": "^5.14.0",
+    "archiver": "^6.0.2",
+    "axios": "^1.6.8",
+    "check-disk-space": "^3.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.47.1",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.3",
+    "razorpay": "^2.9.4",
+    "sharp": "^0.33.4",
+    "socket.io": "^4.7.5",
+    "speakeasy": "^2.0.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
+    "prisma": "^5.14.0",
     "wait-on": "^7.2.0"
   },
   "build": {
@@ -43,6 +59,7 @@
       "frontend/out/**/*",
       "package.json",
       "node_modules/**/*",
+      "node_modules/.prisma/**/*",
       "!backend/prisma/*.db-journal",
       "!backend/uploads/**/*",
       "!backend/public/generated/**/*",

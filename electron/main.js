@@ -3,34 +3,85 @@ const path = require('path');
 const fs = require('fs');
 const checkDiskSpace = require('check-disk-space').default;
 
+// Global error logging to capture backend/server crashes in packaged environment
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  try {
+    const logPath = path.join(app.getPath('userData'), 'uncaught_exception.log');
+    fs.writeFileSync(logPath, `Timestamp: ${new Date().toISOString()}\nError: ${error.message}\nStack: ${error.stack}\n`);
+  } catch (e) {}
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+  try {
+    const logPath = path.join(app.getPath('userData'), 'unhandled_rejection.log');
+    fs.writeFileSync(logPath, `Timestamp: ${new Date().toISOString()}\nReason: ${reason?.stack || reason}\n`);
+  } catch (e) {}
+});
+
 // Start Express Backend directly in the main process only when packaged for production
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 if (!isDev) {
   try {
-    // Ensure database file is placed in a writable directory (AppData)
-    const userDataPath = app.getPath('userData');
-    const writableDbPath = path.join(userDataPath, 'dev.db');
+    // Load env variables
+    const dotenv = require('dotenv');
+    const possibleEnvPaths = [
+      path.join(__dirname, '../.env'),
+      path.join(__dirname, '../../../../.env'),
+      path.join(path.dirname(app.getPath('exe')), '.env'),
+      path.join(process.cwd(), '.env')
+    ];
 
-    if (!fs.existsSync(writableDbPath)) {
-      // In a packaged app, the template dev.db is packaged in the app resources
-      const templateDbPath = path.join(__dirname, '../backend/prisma/dev.db');
-      if (fs.existsSync(templateDbPath)) {
-        fs.copyFileSync(templateDbPath, writableDbPath);
-        console.log('Database template successfully copied to AppData:', writableDbPath);
-      } else {
-        console.warn('Database template not found at:', templateDbPath);
+    for (const envPath of possibleEnvPaths) {
+      if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+        console.log('Loaded env configuration from:', envPath);
+        break;
       }
     }
 
-    // Override the Prisma environment link to use the writable AppData database file
-    const { pathToFileURL } = require('url');
-    process.env.DATABASE_URL = pathToFileURL(writableDbPath).toString();
-    console.log('Database URL configured to:', process.env.DATABASE_URL);
+    // Determine database provider from schema
+    let dbProvider = 'sqlite';
+    try {
+      const schemaPath = path.join(__dirname, '../backend/prisma/schema.prisma');
+      if (fs.existsSync(schemaPath)) {
+        const schemaContent = fs.readFileSync(schemaPath, 'utf8');
+        if (schemaContent.includes('provider = "postgresql"')) {
+          dbProvider = 'postgresql';
+        }
+      }
+    } catch (e) {
+      console.warn('Could not parse schema provider:', e);
+    }
+
+    if (dbProvider === 'sqlite') {
+      const userDataPath = app.getPath('userData');
+      const writableDbPath = path.join(userDataPath, 'dev.db');
+
+      if (!fs.existsSync(writableDbPath)) {
+        const templateDbPath = path.join(__dirname, '../backend/prisma/dev.db');
+        if (fs.existsSync(templateDbPath)) {
+          fs.copyFileSync(templateDbPath, writableDbPath);
+          console.log('Database template successfully copied to AppData:', writableDbPath);
+        }
+      }
+
+      const { pathToFileURL } = require('url');
+      process.env.DATABASE_URL = pathToFileURL(writableDbPath).toString();
+      console.log('Database URL configured to SQLite:', process.env.DATABASE_URL);
+    } else {
+      console.log('PostgreSQL mode active. Using database URL:', process.env.DATABASE_URL);
+    }
 
     require('../backend/server.js');
     console.log('Express API backend started within Electron main process.');
   } catch (error) {
     console.error('Failed to start Express backend:', error);
+    try {
+      const logPath = path.join(app.getPath('userData'), 'backend_error.log');
+      fs.writeFileSync(logPath, `Timestamp: ${new Date().toISOString()}\nError: ${error.message}\nStack: ${error.stack}\n`);
+    } catch (e) {}
   }
 } else {
   console.log('Running in development mode: Express backend expected to run in a separate terminal process.');

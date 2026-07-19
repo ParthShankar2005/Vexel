@@ -92,12 +92,16 @@ async function main() {
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@vexel.ai';
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {},
+    update: {
+      accessKey: 'admin123',
+      totpEnabled: true
+    },
     create: {
       email: adminEmail,
       role: 'ADMIN',
       status: 'ACTIVE',
-      totpEnabled: false, // will require scan on first login
+      accessKey: 'admin123',
+      totpEnabled: true,
     },
   });
 

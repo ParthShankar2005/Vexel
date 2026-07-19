@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Mail, KeyRound, Sparkles, UserPlus, RefreshCw, LogIn, Clock, AlertTriangle } from 'lucide-react';
+import { Lock, Mail, KeyRound, Sparkles, UserPlus, RefreshCw, LogIn, Clock, AlertTriangle, QrCode } from 'lucide-react';
 import { API_BASE_URL } from '../utils/api';
 
 export default function Auth({ onLoginSuccess }) {
@@ -13,19 +13,15 @@ export default function Auth({ onLoginSuccess }) {
   const [errorMsg, setErrorMsg] = useState('');
 
   // States for registration progression
-  const [regStep, setRegStep] = useState(1); // 1: Email, 2: Scan QR, 3: Pending Approval
+  const [regStep, setRegStep] = useState(1); // 1: Email Request, 2: Scan QR, 3: Pending Approval
+  const [tempSecret, setTempSecret] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState('');
-  
-  // State for Admin TOTP Setup
-  const [adminSetupQr, setAdminSetupQr] = useState('');
-  const [adminSetupEmail, setAdminSetupEmail] = useState('');
-  const [isAdminSetup, setIsAdminSetup] = useState(false);
 
   // Handle Login
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!email || !code) {
-      setErrorMsg('Please fill in both email and authenticator code');
+      setErrorMsg('Please enter both email and your 6-digit Authenticator code');
       return;
     }
 
@@ -36,23 +32,13 @@ export default function Auth({ onLoginSuccess }) {
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, token: code })
+        body: JSON.stringify({ email, code })
       });
 
       const data = await res.json();
 
       if (!res.ok) {
         throw new Error(data.error || 'Login failed');
-      }
-
-      if (data.requiresSetup) {
-        // Admin first time setup required
-        setAdminSetupQr(data.qrCode);
-        setAdminSetupEmail(email);
-        setIsAdminSetup(true);
-        setCode('');
-        setLoading(false);
-        return;
       }
 
       // Success
@@ -64,11 +50,11 @@ export default function Auth({ onLoginSuccess }) {
     }
   };
 
-  // Handle Registration Step 1: Submit Email
-  const handleRegisterEmail = async (e) => {
+  // Handle Registration Step 1: Submit Email to get TOTP Secret
+  const handleRegisterInit = async (e) => {
     e.preventDefault();
     if (!email) {
-      setErrorMsg('Please enter your email');
+      setErrorMsg('Please enter your email address');
       return;
     }
 
@@ -76,7 +62,7 @@ export default function Auth({ onLoginSuccess }) {
     setErrorMsg('');
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register-init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -85,12 +71,12 @@ export default function Auth({ onLoginSuccess }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Registration failed');
+        throw new Error(data.error || 'Failed to initialize registration');
       }
 
-      // Success, show QR code setup step
-      setQrCodeUrl(data.qrCode);
-      setRegStep(2);
+      setTempSecret(data.secret);
+      setQrCodeUrl(data.qrCodeUrl);
+      setRegStep(2); // Go to Scan QR step
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -98,11 +84,11 @@ export default function Auth({ onLoginSuccess }) {
     }
   };
 
-  // Handle Admin TOTP Setup Verification
-  const handleAdminSetupVerify = async (e) => {
+  // Handle Registration Step 2: Verify TOTP Code and complete signup
+  const handleRegisterVerify = async (e) => {
     e.preventDefault();
     if (!code) {
-      setErrorMsg('Please input the code to verify');
+      setErrorMsg('Please enter the 6-digit code from Google Authenticator');
       return;
     }
 
@@ -110,20 +96,19 @@ export default function Auth({ onLoginSuccess }) {
     setErrorMsg('');
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/admin/setup`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: adminSetupEmail, token: code })
+        body: JSON.stringify({ email, secret: tempSecret, code })
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Admin verification failed');
+        throw new Error(data.error || 'Failed to verify Authenticator code');
       }
 
-      // Login success
-      onLoginSuccess(data.token, data.user);
+      setRegStep(3); // Go to Pending Approval step
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -149,11 +134,11 @@ export default function Auth({ onLoginSuccess }) {
         </div>
 
         {/* Dynamic Navigation Panels */}
-        {!isAdminSetup && regStep === 1 && (
+        {regStep === 1 && (
           <div className="flex border-b border-zinc-900 px-6">
             <button
               id="tab-login"
-              onClick={() => { setActiveTab('login'); setErrorMsg(''); }}
+              onClick={() => { setActiveTab('login'); setErrorMsg(''); setCode(''); }}
               className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-all flex items-center justify-center gap-2 ${
                 activeTab === 'login'
                   ? 'border-violet-500 text-white font-bold'
@@ -164,7 +149,7 @@ export default function Auth({ onLoginSuccess }) {
             </button>
             <button
               id="tab-register"
-              onClick={() => { setActiveTab('register'); setErrorMsg(''); }}
+              onClick={() => { setActiveTab('register'); setErrorMsg(''); setCode(''); }}
               className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-all flex items-center justify-center gap-2 ${
                 activeTab === 'register'
                   ? 'border-violet-500 text-white font-bold'
@@ -189,56 +174,8 @@ export default function Auth({ onLoginSuccess }) {
           )}
 
           <AnimatePresence mode="wait">
-            {/* ADMIN FIRST-TIME TOTP SETUP SCREEN */}
-            {isAdminSetup && (
-              <motion.div
-                key="adminSetup"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-5 text-center"
-              >
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-white">Setup Admin Authenticator</h3>
-                  <p className="text-xs text-zinc-400">Scan this QR code with Google Authenticator to secure your Admin account.</p>
-                </div>
-
-                {adminSetupQr && (
-                  <div className="mx-auto w-44 h-44 p-2 bg-white rounded-xl shadow-inner border border-zinc-200 flex items-center justify-center">
-                    <img src={adminSetupQr} alt="Admin Setup QR Code" className="w-40 h-40" />
-                  </div>
-                )}
-
-                <form onSubmit={handleAdminSetupVerify} className="space-y-4 text-left">
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-zinc-400 font-semibold flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-violet-400" /> Verify 6-Digit Code
-                    </label>
-                    <input
-                      id="txt-admin-setup-code"
-                      type="text"
-                      maxLength={6}
-                      placeholder="000 000"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                      className="w-full text-center tracking-widest text-lg font-mono glass-input py-2.5 focus:border-violet-500"
-                    />
-                  </div>
-
-                  <button
-                    id="btn-admin-setup-submit"
-                    type="submit"
-                    disabled={loading || code.length !== 6}
-                    className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 font-semibold text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Lock Code & Login'}
-                  </button>
-                </form>
-              </motion.div>
-            )}
-
             {/* LOGIN SCREEN */}
-            {!isAdminSetup && activeTab === 'login' && (
+            {activeTab === 'login' && (
               <motion.form
                 key="loginForm"
                 onSubmit={handleLogin}
@@ -263,16 +200,16 @@ export default function Auth({ onLoginSuccess }) {
 
                 <div className="space-y-1.5">
                   <label className="text-xs text-zinc-400 font-semibold flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-violet-400" /> 6-Digit Authenticator Code
+                    <KeyRound className="w-3.5 h-3.5 text-violet-400" /> 6-Digit Authentication Code
                   </label>
                   <input
                     id="txt-login-code"
                     type="text"
-                    maxLength={6}
                     placeholder="000000"
                     value={code}
+                    maxLength={6}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    className="w-full tracking-widest text-center font-mono text-lg glass-input py-2.5 focus:border-violet-500"
+                    className="w-full glass-input tracking-widest text-center text-lg font-mono font-bold"
                   />
                 </div>
 
@@ -288,7 +225,7 @@ export default function Auth({ onLoginSuccess }) {
             )}
 
             {/* REGISTER SCREEN - Progressing Steps */}
-            {!isAdminSetup && activeTab === 'register' && (
+            {activeTab === 'register' && (
               <motion.div
                 key="registerForm"
                 initial={{ opacity: 0, x: 10 }}
@@ -296,7 +233,7 @@ export default function Auth({ onLoginSuccess }) {
                 exit={{ opacity: 0, x: -10 }}
               >
                 {regStep === 1 && (
-                  <form onSubmit={handleRegisterEmail} className="space-y-4">
+                  <form onSubmit={handleRegisterInit} className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-xs text-zinc-400 font-semibold flex items-center gap-1.5">
                         <Mail className="w-3.5 h-3.5 text-violet-400" /> Enter Email Address
@@ -310,48 +247,57 @@ export default function Auth({ onLoginSuccess }) {
                         className="w-full glass-input"
                       />
                     </div>
+
                     <button
                       id="btn-register-submit"
                       type="submit"
                       disabled={loading || !email}
                       className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 font-semibold text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
                     >
-                      {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Generate Authenticator Link'}
+                      {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Request Access'}
                     </button>
                   </form>
                 )}
 
                 {regStep === 2 && (
-                  <div className="space-y-5 text-center">
+                  <form onSubmit={handleRegisterVerify} className="space-y-5 text-center">
                     <div className="space-y-1">
-                      <h3 className="text-sm font-bold text-white">Scan Authenticator QR</h3>
-                      <p className="text-[11px] text-zinc-400 leading-relaxed">
-                        Scan this QR code with Google Authenticator or Microsoft Authenticator, then click submit to register.
+                      <h3 className="text-sm font-bold text-white flex items-center justify-center gap-1.5">
+                        <QrCode className="w-4 h-4 text-violet-400" /> Setup Authenticator
+                      </h3>
+                      <p className="text-[10px] text-zinc-400 max-w-xs mx-auto leading-relaxed">
+                        Scan the QR code below inside your Google Authenticator app to connect your Vexel account.
                       </p>
                     </div>
 
-                    {qrCodeUrl && (
-                      <div className="mx-auto w-40 h-40 p-2 bg-white rounded-xl shadow-inner border border-zinc-200 flex items-center justify-center">
-                        <img src={qrCodeUrl} alt="Authenticator QR Code" className="w-36 h-36" />
-                      </div>
-                    )}
-
-                    <div className="space-y-2 pt-2">
-                      <button
-                        id="btn-register-scanned"
-                        onClick={() => setRegStep(3)}
-                        className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 font-semibold text-white transition flex items-center justify-center gap-2"
-                      >
-                        I Have Scanned the Code
-                      </button>
-                      <button
-                        onClick={() => { setRegStep(1); setQrCodeUrl(''); }}
-                        className="text-xs text-zinc-500 hover:text-zinc-300 transition underline"
-                      >
-                        Back to edit email
-                      </button>
+                    <div className="relative inline-block mx-auto rounded-2xl overflow-hidden border border-zinc-800 bg-white p-2">
+                      <img src={qrCodeUrl} className="w-44 h-44" alt="Google Authenticator Setup QR" />
                     </div>
-                  </div>
+
+                    <div className="space-y-1.5 text-left">
+                      <label className="text-xs text-zinc-400 font-semibold flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-violet-400" /> Enter Setup 6-Digit Code
+                      </label>
+                      <input
+                        id="txt-register-code"
+                        type="text"
+                        placeholder="000000"
+                        value={code}
+                        maxLength={6}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                        className="w-full glass-input tracking-widest text-center text-lg font-mono font-bold"
+                      />
+                    </div>
+
+                    <button
+                      id="btn-verify-setup"
+                      type="submit"
+                      disabled={loading || code.length !== 6}
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 font-semibold text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Verify and Submit'}
+                    </button>
+                  </form>
                 )}
 
                 {regStep === 3 && (
@@ -366,7 +312,7 @@ export default function Auth({ onLoginSuccess }) {
                       </p>
                     </div>
                     <div className="p-3 bg-zinc-900 border border-zinc-850 rounded-xl text-left text-[11px] text-zinc-400">
-                      Once the admin approves your account, you will be able to log in using the email <span className="font-semibold text-zinc-300 font-mono">{email}</span> and the 6-digit code from your authenticator.
+                      Once the admin approves your account, you will be able to log in using the email <span className="font-semibold text-zinc-300 font-mono">{email}</span> and your Google Authenticator code.
                     </div>
                     <button
                       id="btn-registration-pending-ok"
@@ -375,6 +321,7 @@ export default function Auth({ onLoginSuccess }) {
                         setRegStep(1);
                         setEmail('');
                         setCode('');
+                        setTempSecret('');
                         setQrCodeUrl('');
                       }}
                       className="w-full py-2 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 text-xs font-semibold transition"
