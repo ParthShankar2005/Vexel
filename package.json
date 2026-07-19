@@ -1,0 +1,65 @@
+{
+  "name": "vexel-ai-image-generator",
+  "version": "1.0.0",
+  "description": "AI-powered advertisement image generation desktop software for eCommerce sellers",
+  "main": "electron/main.js",
+  "scripts": {
+    "postinstall": "npm install --prefix backend && npm install --prefix frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:electron": "wait-on http://localhost:3000 && wait-on http://localhost:3001 && electron .",
+    "prisma:generate": "npm run prisma:generate --prefix backend",
+    "prisma:migrate": "npm run prisma:migrate --prefix backend",
+    "db:seed": "npm run db:seed --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "package": "npm run build:frontend && electron-builder"
+  },
+  "dependencies": {
+    "check-disk-space": "^3.4.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.1",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.vexel.ai",
+    "productName": "VEXEL AI",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@prisma/client/**/*",
+      "**/node_modules/prisma/**/*",
+      "**/node_modules/.prisma/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/**/*",
+      "frontend/out/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!backend/prisma/*.db-journal",
+      "!backend/uploads/**/*",
+      "!backend/public/generated/**/*",
+      "!backend/invoices/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VEXEL AI",
+      "runAfterFinish": true
+    }
+  }
+}

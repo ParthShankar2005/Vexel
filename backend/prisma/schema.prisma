@@ -1,0 +1,150 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  role            String        @default("USER") // "USER", "ADMIN"
+  status          String        @default("PENDING") // "PENDING", "ACTIVE", "SUSPENDED", "DISABLED"
+  totpSecret      String?
+  totpEnabled     Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  wallet          Wallet?
+  transactions    Transaction[]
+  offerProgress   OfferProgress?
+  imageJobs       ImageJob[]
+  tickets         Ticket[]
+  auditLogs       AuditLog[]
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credits   Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id          String            @id @default(uuid())
+  walletId    String
+  user        User              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount      Float             @default(0.0) // INR amount
+  credits     Int               // credits added or deducted
+  type        String            // "PURCHASE", "USAGE", "REFUND"
+  status      String            @default("PENDING") // "PENDING", "COMPLETED", "FAILED"
+  referenceId String?           // Razorpay payment ID or details
+  invoicePath String?           // local path to invoice PDF
+  createdAt   DateTime          @default(now())
+}
+
+model Plan {
+  id        String   @id @default(uuid())
+  name      String
+  price     Float    // Price in INR
+  credits   Int      // Credits included
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OfferSetting {
+  id                 String   @id @default("singleton")
+  baseDiscountMin    Float    @default(50.0) // 50%
+  baseDiscountMax    Float    @default(60.0) // 60%
+  reward80Discount   Float    @default(80.0) // 80%
+  reward85Discount   Float    @default(85.0) // 85%
+  purchasesRequired  Int      @default(10)
+  roundsBefore85     Int      @default(5)
+  offerIntervalDays  Int      @default(3)
+  offerDurationHours Int      @default(24) // 24 hours
+  isEngineEnabled    Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+}
+
+model OfferProgress {
+  id                        String   @id @default(uuid())
+  userId                    String   @unique
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentRound              Int      @default(1) // 1 to 5
+  purchasesInCurrentRound   Int      @default(0) // 0 to 10
+  isSpecialRewardUnlocked   Boolean  @default(false)
+  updatedAt                 DateTime @updatedAt
+}
+
+model ImageJob {
+  id             String           @id @default(uuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         String           @default("QUEUED") // "QUEUED", "PROCESSING", "COMPLETED", "FAILED"
+  prompt         String
+  imageCount     Int              @default(4)
+  creditsCharged Int              @default(8)
+  errorMessage   String?
+  createdAt      DateTime         @default(now())
+  images         GeneratedImage[]
+}
+
+model GeneratedImage {
+  id        String   @id @default(uuid())
+  jobId     String
+  job       ImageJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  localPath String
+  url       String
+  createdAt DateTime @default(now())
+}
+
+model Ticket {
+  id        String        @id @default(uuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String        @default("OPEN") // "OPEN", "CLOSED"
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id             String   @id @default(uuid())
+  ticketId       String
+  ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId       String
+  senderRole     String   // "USER", "ADMIN"
+  message        String
+  attachmentPath String?
+  createdAt      DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model SystemSetting {
+  id                   String   @id @default("singleton")
+  openaiApiKey         String?
+  cloudflareAccountId  String?
+  cloudflareApiToken   String?
+  razorpayKeyId        String?
+  razorpayKeySecret    String?
+  imagesPerGeneration  Int      @default(4)
+  creditsPerImage      Int      @default(2)
+  maxUploadSizeMb      Int      @default(5)
+  zipStoragePath       String   @default("D:\\VEXEL ZIPs")
+  autoCleanupDays      Int      @default(30)
+  backupSchedule       String   @default("0 0 * * *")
+  maintenanceMode      Boolean  @default(false)
+  updatedAt            DateTime @updatedAt
+}
